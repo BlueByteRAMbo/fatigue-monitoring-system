@@ -18,3 +18,11 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+# ADDED: moved here so any route file can import it without circular imports
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
