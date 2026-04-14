@@ -1,16 +1,31 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 
 class AnalyzeRequest(BaseModel):
-    meeting_id: int
-    frame: str           # base64-encoded image (JPEG or PNG)
-    blink_rate: Optional[float] = None   # computed by extension, stored for analytics
+    image_b64:  str            # base64 encoded JPEG from Chrome extension
+    meeting_id: int            # which meeting this frame belongs to
+    blink_rate: Optional[float] = None  # computed by extension, passed through
+    baseline_ear: Optional[float] = None # personalized baseline from calibration
 
 
 class AnalyzeResponse(BaseModel):
-    fatigue_level: str                   # "low" | "medium" | "high"
+    fatigue_level: str         # "low", "medium", "high"
     confidence:    float
-    ear_score:     Optional[float]       # avg EAR from this frame
-    head_pose:     Optional[str]         # e.g. "pitch:-24.1,yaw:7.8,roll:2.2"
-    message:       Optional[str]         # human-readable note if face not detected
+    triggers:      List[str]   # which layers fired: ["MODEL", "EAR", "NOD"]
+    ear_score:     Optional[float]
+    mar_score:     Optional[float]
+    head_pose:     Optional[str]  # "pitch,yaw,roll" as string
+    blink_rate:    Optional[float]
+    face_detected: bool
+    brightness:    Optional[float] = None
+    position:      Optional[str] = None
+
+
+class CalibrateRequest(BaseModel):
+    images: List[str]          # buffer of base64 images
+
+
+class CalibrateResponse(BaseModel):
+    baseline_ear: float
+    status: str                # "success" or error message

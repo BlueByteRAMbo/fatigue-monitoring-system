@@ -1,94 +1,111 @@
 import cv2
 import numpy as np
 import mediapipe as mp
-from typing import Optional
+from scipy.spatial.distance import euclidean
+import base64
 
 mp_face_mesh = mp.solutions.face_mesh
 
-# Landmark indices
 LEFT_EYE  = [362, 385, 387, 263, 373, 380]
-RIGHT_EYE = [33, 160, 158, 133, 153, 144]
-MOUTH     = [61, 291, 39, 269, 0, 17]
+RIGHT_EYE = [33,  160, 158, 133, 153, 144]
+MOUTH     = [61, 291, 39, 181, 0, 17, 269, 405]
 
-# 3D model points for head pose estimation
 MODEL_POINTS = np.array([
-    (0.0,   0.0,    0.0),     # Nose tip
-    (0.0,  -330.0, -65.0),    # Chin
-    (-225.0, 170.0, -135.0),  # Left eye left corner
-    (225.0,  170.0, -135.0),  # Right eye right corner
-    (-150.0, -150.0, -125.0), # Left mouth corner
-    (150.0,  -150.0, -125.0), # Right mouth corner
+    (0.0,    0.0,    0.0   ),
+    (0.0,   -330.0, -65.0  ),
+    (-225.0, 170.0, -135.0 ),
+    (225.0,  170.0, -135.0 ),
+    (-150.0,-150.0, -125.0 ),
+    (150.0, -150.0, -125.0 ),
 ], dtype=np.float64)
-
-# Corresponding landmark indices for pose
-POSE_LANDMARK_IDS = [1, 152, 263, 33, 287, 57]
+POSE_LM_IDS = [1, 152, 33, 263, 61, 291]
 
 
-def _eye_aspect_ratio(landmarks, indices, w, h):
-    pts = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
-    A = np.linalg.norm(np.array(pts[1]) - np.array(pts[5]))
-    B = np.linalg.norm(np.array(pts[2]) - np.array(pts[4]))
-    C = np.linalg.norm(np.array(pts[0]) - np.array(pts[3]))
-    return (A + B) / (2.0 * C) if C > 0 else 0.0
+def _ear(landmarks, eye_ids, w, h):
+    pts = np.array([(landmarks[i].x * w, landmarks[i].y * h) for i in eye_ids])
+    A = euclidean(pts[1], pts[5])
+    B = euclidean(pts[2], pts[4])
+    C = euclidean(pts[0], pts[3])
+    return float((A + B) / (2.0 * C)) if C > 0 else 0.0
 
 
-def _mouth_aspect_ratio(landmarks, indices, w, h):
-    pts = [(int(landmarks[i].x * w), int(landmarks[i].y * h)) for i in indices]
-    A = np.linalg.norm(np.array(pts[1]) - np.array(pts[5]))
-    B = np.linalg.norm(np.array(pts[2]) - np.array(pts[4]))
-    C = np.linalg.norm(np.array(pts[0]) - np.array(pts[3]))
-    return (A + B) / (2.0 * C) if C > 0 else 0.0
+def _mar(landmarks, mouth_ids, w, h):
+    pts = np.array([(landmarks[i].x * w, landmarks[i].y * h) for i in mouth_ids])
+    A = euclidean(pts[2], pts[6])
+    B = euclidean(pts[3], pts[7])
+    C = euclidean(pts[4], pts[5])
+    D = euclidean(pts[0], pts[1])
+    return float((A + B + C) / (2.0 * D)) if D > 0 else 0.0
 
 
 def _head_pose(landmarks, w, h):
-    image_points = np.array([
-        (landmarks[i].x * w, landmarks[i].y * h)
-        for i in POSE_LANDMARK_IDS
+    img_pts = np.array([
+        (landmarks[i].x * w, landmarks[i].y * h) for i in POSE_LM_IDS
     ], dtype=np.float64)
-
-    focal_length = w
-    center = (w / 2, h / 2)
-    camera_matrix = np.array([
-        [focal_length, 0,            center[0]],
-        [0,            focal_length, center[1]],
-        [0,            0,            1         ]
+    focal   = w
+    cam_mat = np.array([
+        [focal, 0,     w / 2],
+        [0,     focal, h / 2],
+        [0,     0,     1    ],
     ], dtype=np.float64)
-
     dist_coeffs = np.zeros((4, 1))
-    success, rotation_vec, _ = cv2.solvePnP(
-        MODEL_POINTS, image_points, camera_matrix, dist_coeffs,
+    _, rvec, _  = cv2.solvePnP(
+        MODEL_POINTS, img_pts, cam_mat, dist_coeffs,
         flags=cv2.SOLVEPNP_ITERATIVE
     )
-    if not success:
-        return 0.0, 0.0, 0.0
-
-    rotation_mat, _ = cv2.Rodrigues(rotation_vec)
-    sy = np.sqrt(rotation_mat[0, 0] ** 2 + rotation_mat[1, 0] ** 2)
-    pitch = float(np.degrees(np.arctan2(-rotation_mat[2, 0], sy)))
-    yaw   = float(np.degrees(np.arctan2(rotation_mat[1, 0], rotation_mat[0, 0])))
-    roll  = float(np.degrees(np.arctan2(rotation_mat[2, 1], rotation_mat[2, 2])))
-    return pitch, yaw, roll
+    rot_mat, _  = cv2.Rodrigues(rvec)
+    angles, *_  = cv2.RQDecomp3x3(rot_mat)
+    return float(angles[0]), float(angles[1]), float(angles[2])
 
 
-def extract_features(image_bytes: bytes) -> Optional[list]:
+def _brightness(frame):
+    if frame is None: return 0
+    # Use lab space L channel or just mean of grayscale
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(np.mean(gray))
+
+
+def _position_status(landmarks, w, h):
+    # Get bounding box of all landmarks
+    x_coords = [lm.x for lm in landmarks]
+    y_coords = [lm.y for lm in landmarks]
+    
+    face_w = max(x_coords) - min(x_coords)
+    face_h = max(y_coords) - min(y_coords)
+    center_x = (max(x_coords) + min(x_coords)) / 2
+    
+    # Ratios
+    size_ratio = (face_w + face_h) / 2
+    
+    if size_ratio > 0.8: return "too_close"
+    if size_ratio < 0.2: return "too_far"
+    if abs(center_x - 0.5) > 0.25: return "off_center"
+    return "good"
+
+
+def extract_features(image_b64: str) -> dict | None:
     """
-    Takes raw image bytes, runs MediaPipe FaceMesh,
-    and returns [left_EAR, right_EAR, avg_EAR, MAR, pitch, yaw, roll]
-    or None if no face detected.
+    Accepts a base64-encoded JPEG/PNG string from the Chrome extension.
+    Returns a dict of features + metadata, or None if no face detected.
     """
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    try:
+        img_bytes = base64.b64decode(image_b64)
+        img_array = np.frombuffer(img_bytes, dtype=np.uint8)
+        frame     = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    except Exception:
+        return None
+
     if frame is None:
         return None
 
     h, w = frame.shape[:2]
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     with mp_face_mesh.FaceMesh(
         static_image_mode=True,
         max_num_faces=1,
-        refine_landmarks=False,
-        min_detection_confidence=0.5
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
     ) as face_mesh:
         results = face_mesh.process(rgb)
 
@@ -97,10 +114,20 @@ def extract_features(image_bytes: bytes) -> Optional[list]:
 
     lm = results.multi_face_landmarks[0].landmark
 
-    left_ear  = _eye_aspect_ratio(lm, LEFT_EYE,  w, h)
-    right_ear = _eye_aspect_ratio(lm, RIGHT_EYE, w, h)
+    left_ear  = _ear(lm, LEFT_EYE,  w, h)
+    right_ear = _ear(lm, RIGHT_EYE, w, h)
     avg_ear   = (left_ear + right_ear) / 2.0
-    mar       = _mouth_aspect_ratio(lm, MOUTH, w, h)
+    mar       = _mar(lm, MOUTH, w, h)
     pitch, yaw, roll = _head_pose(lm, w, h)
 
-    return [left_ear, right_ear, avg_ear, mar, pitch, yaw, roll]
+    return {
+        "left_EAR":  round(left_ear,  4),
+        "right_EAR": round(right_ear, 4),
+        "avg_EAR":   round(avg_ear,   4),
+        "MAR":       round(mar,       4),
+        "pitch":     round(pitch,     2),
+        "yaw":       round(yaw,       2),
+        "roll":      round(roll,      2),
+        "brightness": round(_brightness(frame), 1),
+        "position":  _position_status(lm, w, h)
+    }

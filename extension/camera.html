@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fatigue Monitor - Camera Setup</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .container {
+            background: #1e293b;
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        h2 { margin-top: 0; color: #3b82f6; }
+        p { color: #94a3b8; line-height: 1.5; margin-bottom: 24px; }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn:hover { background: #2563eb; }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Camera Access Required</h2>
+        <p>The Fatigue Monitoring system needs your permission to access the webcam to monitor your fatigue levels in the background.</p>
+        <p><strong>Please click "Allow" on the browser prompt.</strong></p>
+        <button id="btn-allow" class="btn">Grant Permission</button>
+        <div id="status"></div>
+    </div>
+    <script src="camera.js"></script>
+</body>
+</html>

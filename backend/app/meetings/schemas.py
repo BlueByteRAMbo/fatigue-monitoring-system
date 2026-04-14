@@ -22,6 +22,7 @@ class MeetingResponse(BaseModel):
     join_code: str
     started_at: datetime.datetime
     ended_at: Optional[datetime.datetime]
+    user_joined_at: Optional[datetime.datetime] = None
     participants: List[ParticipantResponse] = []
 
     class Config:
@@ -48,3 +49,17 @@ class FatigueLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SessionInfo(BaseModel):
+    joined_at: datetime.datetime
+    left_at: Optional[datetime.datetime]
+
+
+class AttendanceResponse(BaseModel):
+    user_id: int
+    name: str
+    email: str
+    sessions: List[SessionInfo]
+    total_minutes: int
+    first_seen: datetime.datetime

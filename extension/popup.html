@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fatigue Monitoring</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo-glow"></div>
+            <h1>Fatigue Monitor</h1>
+            <div id="status-dot" class="status-dot offline"></div>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <main id="main-content">
+            
+            <!-- Login View -->
+            <div id="view-login" class="view active">
+                <p class="subtitle">Log in to your student account</p>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" placeholder="student@example.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Authenticate</button>
+                    <p id="login-error" class="error-msg hidden"></p>
+                </form>
+            </div>
+
+            <!-- Join Meeting View -->
+            <div id="view-meeting" class="view hidden">
+                <div class="user-profile">
+                    <div class="avatar" id="user-initial">S</div>
+                    <div class="user-details">
+                        <span class="user-name" id="user-name">Student</span>
+                        <span class="user-role" id="user-role">Ready to learn</span>
+                    </div>
+                    <button id="btn-logout" class="btn-text">Logout</button>
+                </div>
+
+                <div class="divider"></div>
+
+                <div id="join-section">
+                    <p class="subtitle">Enter classroom code</p>
+                    <form id="join-form">
+                        <div class="input-group">
+                            <input type="text" id="join-code" placeholder="e.g. A1B2C3" maxlength="6" style="text-transform: uppercase;" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Join Session</button>
+                        <p id="join-error" class="error-msg hidden"></p>
+                    </form>
+                </div>
+
+                <div id="active-session-section" class="hidden">
+                    <div id="face-alert-banner" class="hidden" style="background:#f59e0b; color:#000; padding:8px 12px; border-radius:6px; font-size:0.8rem; font-weight:600; margin-bottom:8px;">
+                        ⚠ Face not detected — please look at your camera
+                    </div>
+                    <div class="session-card">
+                        <div class="pulse-ring"></div>
+                        <h2 id="current-meeting-title">Mathematics 101</h2>
+                        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 8px;">
+                           <p class="monitoring-text" style="margin: 0;">Monitoring Active</p>
+                           <button id="btn-calibrate" style="background: var(--surface-muted); border: none; color: var(--text-main); font-size: 0.65rem; border-radius: 4px; padding: 2px 6px; cursor: pointer; display: flex; alignItems: center; gap: 4px;">🎯 Calibrate</button>
+                        </div>
+                        <div id="session-timer" style="font-size:0.75rem; color:#64748b; margin-top:4px;">⏱ 00:00:00</div>
+                    </div>
+
+                    <div id="environment-guide" style="background: var(--surface-muted); padding: 8px; border-radius: 8px; margin-top: 8px; font-size: 0.7rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="color: var(--text-muted);">💡 Lighting</span>
+                            <span id="light-status">Scanning...</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">👤 Position</span>
+                            <span id="pos-status">Scanning...</span>
+                        </div>
+                    </div>
+                    
+                    <div id="self-view-container" style="width:100%; border-radius:8px; overflow:hidden; margin:8px 0; position:relative; background:#0f172a;">
+                        <canvas id="self-view-canvas" style="width:100%; height:80px; object-fit:cover; display:block;"></canvas>
+                        <div id="self-view-overlay" style="position:absolute; bottom:4px; left:6px; font-size:0.65rem; color:rgba(255,255,255,0.6);">Live Preview</div>
+                    </div>
+
+                    <button id="btn-leave" class="btn-danger">Leave Session</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

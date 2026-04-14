@@ -1,58 +1,61 @@
-import os
 import joblib
 import numpy as np
-from typing import Optional
+import os
 
 _model = None
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "model", "v1.pkl")
-
-# Confidence threshold: proba >= this → "high", else "medium"
-HIGH_THRESHOLD = 0.70
+_features = None
 
 
 def load_model():
-    """Call this once at app startup."""
-    global _model
-    if not os.path.exists(MODEL_PATH):
-        print(f"[ml] WARNING: model not found at {MODEL_PATH}. Inference will return None.")
-        return
-    _model = joblib.load(MODEL_PATH)
-    print(f"[ml] Model loaded from {MODEL_PATH}")
+    global _model, _features
+    model_path = os.path.join(
+        os.path.dirname(__file__), "..\\..\\..\\model\\v1.pkl"
+    )
+    data = joblib.load(model_path)
+    _model = data["model"]
+    _features = data["features"]
+    print(f"INFO: ML model loaded | features: {_features}")
 
 
-def predict(features: list) -> Optional[dict]:
-    """
-    Takes a 7-element feature vector:
-      [left_EAR, right_EAR, avg_EAR, MAR, pitch, yaw, roll]
-
-    Returns:
-      {
-        "fatigue_level": "low" | "medium" | "high",
-        "confidence": float (0.0–1.0),
-      }
-    or None if the model isn't loaded yet.
-    """
+def predict(left_ear: float, right_ear: float, avg_ear: float,
+            mar: float, pitch: float, yaw: float, roll: float,
+            baseline_ear: float = None) -> dict:
     if _model is None:
-        return None
+        raise RuntimeError("Model not loaded. Call load_model() first.")
 
-    X = np.array(features).reshape(1, -1)
-    prediction   = int(_model.predict(X)[0])
-    probabilities = _model.predict_proba(X)[0]
+    sample = np.array([[left_ear, right_ear, avg_ear, mar, pitch, yaw, roll]])
+    proba = _model.predict_proba(sample)[0][1]  # probability of fatigue
 
-    # probabilities[1] = probability of class 1 (drowsy/fatigued)
-    drowsy_proba = float(probabilities[1])
+    # Dynamic Thresholding
+    # DEFAULT_EAR_THRESHOLD = 0.22. We use baseline_ear * 0.82 if provided.
+    EAR_THRESHOLD = (baseline_ear * 0.82) if baseline_ear else 0.22
+    
+    MAR_THRESHOLD = 0.55
+    PITCH_LIMIT   = 20.0
+    MODEL_THRESHOLD = 0.50
 
-    if prediction == 0:
+    triggers = []
+    if proba >= MODEL_THRESHOLD:
+        triggers.append("MODEL")
+    if avg_ear < EAR_THRESHOLD:
+        triggers.append("EAR")
+    if mar > MAR_THRESHOLD:
+        triggers.append("YAWN")
+    if abs(pitch) > PITCH_LIMIT:
+        triggers.append("NOD")
+
+    is_fatigued = bool(triggers)
+
+    if not is_fatigued:
         fatigue_level = "low"
-        confidence    = float(probabilities[0])
-    elif drowsy_proba >= HIGH_THRESHOLD:
-        fatigue_level = "high"
-        confidence    = drowsy_proba
-    else:
+    elif proba < 0.70:
         fatigue_level = "medium"
-        confidence    = drowsy_proba
+    else:
+        fatigue_level = "high"
 
     return {
         "fatigue_level": fatigue_level,
-        "confidence":    round(confidence, 4),
+        "confidence":    round(float(proba), 4),
+        "triggers":      triggers,
+        "is_fatigued":   is_fatigued,
     }

@@ -3,12 +3,17 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.database.models import Meeting, MeetingParticipant, FatigueLog, User
 from app.auth.security import get_current_user, require_role
+from app.core.utils import get_ist_time
 from app.meetings.schemas import (
     MeetingCreate,
     MeetingResponse,
     FatigueLogCreate,
     FatigueLogResponse,
+    AttendanceResponse,
+    SessionInfo,
 )
+from app.websockets.manager import manager
+import datetime
 from typing import List
 import random, string
 
@@ -56,20 +61,41 @@ def join_meeting(
     if meeting.ended_at:
         raise HTTPException(status_code=400, detail="Meeting has already ended")
 
-    # prevent duplicate joins
-    already = db.query(MeetingParticipant).filter_by(
-        meeting_id=meeting.id, user_id=current_user.id
-    ).first()
-    if not already:
-        participant = MeetingParticipant(
-            meeting_id=meeting.id,
-            user_id=current_user.id,
-        )
-        db.add(participant)
-        db.commit()
+    # unconditional join for multi-session tracking
+    participant = MeetingParticipant(
+        meeting_id=meeting.id,
+        user_id=current_user.id,
+    )
+    db.add(participant)
+    db.commit()
 
     db.refresh(meeting)
+    meeting.user_joined_at = participant.joined_at
     return meeting
+
+
+# ── Get all meetings for user (Teacher or Student) ─────────────────────────────
+@router.get("/", response_model=List[MeetingResponse])
+def get_all_meetings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role == "teacher":
+        return db.query(Meeting).filter(Meeting.host_id == current_user.id).order_by(Meeting.started_at.desc()).all()
+    else:
+        # For students, find their latest session join time for each meeting
+        meetings = db.query(Meeting).join(MeetingParticipant).filter(
+            MeetingParticipant.user_id == current_user.id
+        ).order_by(Meeting.started_at.desc()).all()
+        
+        for m in meetings:
+            latest_part = db.query(MeetingParticipant).filter(
+                MeetingParticipant.meeting_id == m.id,
+                MeetingParticipant.user_id == current_user.id
+            ).order_by(MeetingParticipant.joined_at.desc()).first()
+            if latest_part:
+                m.user_joined_at = latest_part.joined_at
+        return meetings
 
 
 # ── Get meeting details (any participant or host) ──────────────────────────────
@@ -82,6 +108,15 @@ def get_meeting(
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+    
+    # Populate user_joined_at for the current user
+    latest_part = db.query(MeetingParticipant).filter(
+        MeetingParticipant.meeting_id == meeting_id,
+        MeetingParticipant.user_id == current_user.id
+    ).order_by(MeetingParticipant.joined_at.desc()).first()
+    if latest_part:
+        meeting.user_joined_at = latest_part.joined_at
+
     return meeting
 
 
@@ -92,7 +127,6 @@ def end_meeting(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("teacher")),
 ):
-    import datetime
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -101,7 +135,7 @@ def end_meeting(
     if meeting.ended_at:
         raise HTTPException(status_code=400, detail="Meeting already ended")
 
-    meeting.ended_at = datetime.datetime.utcnow()
+    meeting.ended_at = get_ist_time()
     db.commit()
     db.refresh(meeting)
     return meeting
@@ -168,3 +202,75 @@ def get_user_fatigue(
         FatigueLog.meeting_id == meeting_id,
         FatigueLog.user_id == user_id
     ).all()
+
+
+# ── Leave a meeting (idempotent) ──────────────────────────────────────────
+@router.post("/{meeting_id}/leave")
+def leave_meeting(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Find most recent open session
+    participant = db.query(MeetingParticipant).filter(
+        MeetingParticipant.meeting_id == meeting_id,
+        MeetingParticipant.user_id == current_user.id,
+        MeetingParticipant.left_at == None
+    ).order_by(MeetingParticipant.joined_at.desc()).first()
+
+    if participant:
+        participant.left_at = get_ist_time()
+        db.commit()
+    
+    return {"status": "ok"}
+
+
+# ── Get attendance (teachers only) ──────────────────────────────────────────
+@router.get("/{meeting_id}/attendance", response_model=List[AttendanceResponse])
+def get_meeting_attendance(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("teacher")),
+):
+    participants = db.query(MeetingParticipant, User).join(User).filter(
+        MeetingParticipant.meeting_id == meeting_id
+    ).order_by(MeetingParticipant.joined_at.asc()).all()
+
+    # Group by user_id
+    grouped = {}
+    for p, u in participants:
+        if u.id not in grouped:
+            grouped[u.id] = {
+                "user_id": u.id,
+                "name": u.name,
+                "email": u.email,
+                "sessions": [],
+                "first_seen": p.joined_at
+            }
+        
+        grouped[u.id]["sessions"].append({
+            "joined_at": p.joined_at,
+            "left_at": p.left_at
+        })
+
+    results = []
+    now = get_ist_time()
+    for uid, data in grouped.items():
+        total_minutes = 0
+        for s in data["sessions"]:
+            start = s["joined_at"]
+            end = s["left_at"] or now
+            duration = (end - start).total_seconds() / 60
+            total_minutes += max(0, int(duration))
+        
+        data["total_minutes"] = total_minutes
+        results.append(data)
+
+    return results
+
+
+# ── Live Active Student Count (no auth) ──────────────────────────────────────
+@router.get("/{meeting_id}/active-count")
+def get_active_count(meeting_id: int):
+    count = len(manager.active_connections.get(meeting_id, []))
+    return { "meeting_id": meeting_id, "active_count": count }
