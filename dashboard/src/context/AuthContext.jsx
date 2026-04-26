@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_RAW = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API = API_RAW.endsWith('/') ? API_RAW.slice(0, -1) : API_RAW;
 const WS_BASE = API.replace('http', 'ws');
 
 const AuthContext = createContext(null);
