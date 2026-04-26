@@ -20,10 +20,11 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://fatigue-monitoring-system-dashboard.onrender.com",
         "https://fatigue-monitoring-system-api.onrender.com",
     ],
-    # This Regex allows all Render sites and Chrome Extensions
-    allow_origin_regex=r"https://.*\.render\.com|chrome-extension://.*",
+    # This Regex allows the Extension to work from any Chrome ID
+    allow_origin_regex=r"chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
