@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const API = 'http://127.0.0.1:8000';
+const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const WS_BASE = API.replace('http', 'ws');
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -72,7 +74,7 @@ export function AuthProvider({ children }) {
   }, [token, logout]);
 
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, register, logout, authFetch, API }}>
+    <AuthContext.Provider value={{ token, user, loading, login, register, logout, authFetch, API, WS_BASE }}>
       {children}
     </AuthContext.Provider>
   );

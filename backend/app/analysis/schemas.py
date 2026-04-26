@@ -3,10 +3,12 @@ from typing import Optional, List
 
 
 class AnalyzeRequest(BaseModel):
-    image_b64:  str            # base64 encoded JPEG from Chrome extension
     meeting_id: int            # which meeting this frame belongs to
+    landmarks: Optional[List[dict]] = None # 468 landmarks from MediaPipe
+    is_multi_face: Optional[bool] = False  # detected multiple people
     blink_rate: Optional[float] = None  # computed by extension, passed through
     baseline_ear: Optional[float] = None # personalized baseline from calibration
+    image_b64:  Optional[str] = None    # DEPRECATED
 
 
 class AnalyzeResponse(BaseModel):
@@ -23,7 +25,8 @@ class AnalyzeResponse(BaseModel):
 
 
 class CalibrateRequest(BaseModel):
-    images: List[str]          # buffer of base64 images
+    landmarks_list: Optional[List[List[dict]]] = None # List of 5 landmark sets
+    images: Optional[List[str]] = None # DEPRECATED
 
 
 class CalibrateResponse(BaseModel):

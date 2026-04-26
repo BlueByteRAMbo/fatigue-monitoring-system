@@ -27,8 +27,11 @@ async def analyze_frame(
     if meeting.ended_at:
         raise HTTPException(status_code=400, detail="Meeting has ended")
 
-    # run MediaPipe in a thread (CPU-bound, don't block the event loop)
-    features = await run_in_threadpool(vision.extract_features, payload.image_b64)
+    # Use Edge Landmarks if provided, otherwise fallback to deprecated image analysis
+    if payload.landmarks:
+        features = vision.extract_features_from_landmarks(payload.landmarks)
+    else:
+        features = await run_in_threadpool(vision.extract_features, payload.image_b64)
 
     if features is None:
         ws_no_face_payload = {
@@ -115,14 +118,20 @@ async def analyze_frame(
 
 @router.post("/calibrate", response_model=CalibrateResponse)
 async def calibrate_user(payload: CalibrateRequest):
-    if not payload.images:
-        raise HTTPException(status_code=400, detail="No images provided")
-    
     ear_scores = []
-    for img_b64 in payload.images:
-        features = await run_in_threadpool(vision.extract_features, img_b64)
-        if features and features["avg_EAR"]:
-            ear_scores.append(features["avg_EAR"])
+    
+    if payload.landmarks_list:
+        for lm in payload.landmarks_list:
+            features = vision.extract_features_from_landmarks(lm)
+            if features and features["avg_EAR"]:
+                ear_scores.append(features["avg_EAR"])
+    elif payload.images:
+        for img_b64 in payload.images:
+            features = await run_in_threadpool(vision.extract_features, img_b64)
+            if features and features["avg_EAR"]:
+                ear_scores.append(features["avg_EAR"])
+    else:
+        raise HTTPException(status_code=400, detail="No calibration data provided")
     
     if len(ear_scores) < 3:
         return CalibrateResponse(baseline_ear=0.0, status="failed: could not detect face clearly in enough frames")

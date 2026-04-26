@@ -1,4 +1,4 @@
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'http://127.0.0.1:8000'; // Update this to your Render URL after deployment
 let monitoringInterval = null;
 let studentSocket = null;
 
@@ -30,22 +30,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function performCalibration(token) {
     console.log("Starting Calibration Sequence...");
-    const images = [];
+    const landmarks_list = [];
     
-    // Capture 5 frames quickly
+    // Capture 5 sets of landmarks quickly
     for (let i = 0; i < 5; i++) {
-        const response = await chrome.runtime.sendMessage({ action: 'TAKE_SNAPSHOT' });
-        if (response && response.image) images.push(response.image);
+        const response = await chrome.runtime.sendMessage({ action: 'GET_LANDMARKS' });
+        if (response && response.landmarks) landmarks_list.push(response.landmarks);
         await new Promise(r => setTimeout(r, 600));
     }
 
-    if (images.length < 3) return { status: 'failed: could not capture enough frames' };
+    if (landmarks_list.length < 3) return { status: 'failed: could not detect face' };
 
     try {
         const res = await fetch(`${API_URL}/analyze/calibrate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ images })
+            body: JSON.stringify({ landmarks_list })
         });
         const data = await res.json();
         if (data.status === 'success') {
@@ -84,7 +84,9 @@ async function startMonitoring(meetingId, userId, token) {
     console.log(`Starting Capture Loop for Meeting ${meetingId}...`);
 
     // Open Student WebSocket (Source of Truth for Attendance)
-    const wsUrl = `ws://127.0.0.1:8000/ws/student/${userId}?meeting_id=${meetingId}`;
+    // Match WS scale to API_URL (http -> ws, https -> wss)
+    const wsBase = API_URL.replace('http', 'ws');
+    const wsUrl = `${wsBase}/ws/student/${userId}?meeting_id=${meetingId}`;
     studentSocket = new WebSocket(wsUrl);
     
     studentSocket.onopen = () => console.log("[WebSocket] Presence established");
@@ -142,17 +144,18 @@ async function stopMonitoring() {
 
 async function captureAndAnalyze(meetingId, token) {
     try {
-        // 1. Get Base64 Frame
-        const response = await chrome.runtime.sendMessage({ action: 'TAKE_SNAPSHOT' });
-        if (!response || !response.image) {
-            console.warn("Failed to capture snapshot from offscreen document");
+        // 1. Get Landmarks (Edge Processing)
+        const response = await chrome.runtime.sendMessage({ action: 'GET_LANDMARKS' });
+        if (!response) {
+            console.warn("Failed to get landmarks from offscreen document");
             return;
         }
 
         // 2. Prepare Payload
         const payload = {
             meeting_id: meetingId,
-            image_b64: response.image,
+            landmarks: response.landmarks,
+            is_multi_face: response.multi_face,
             blink_rate: currentBlinkRate,
             baseline_ear: baselineEar
         };

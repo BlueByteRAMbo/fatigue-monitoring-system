@@ -12,7 +12,7 @@ import BreakNudge from '../components/BreakNudge';
 const LEVEL_COLOR = { low: 'var(--low)', medium: 'var(--med)', high: 'var(--high)' };
 
 export default function StudentPortal() {
-  const { authFetch, user } = useAuth();
+  const { authFetch, user, WS_BASE } = useAuth();
 
   const [meetings, setMeetings]     = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -66,7 +66,7 @@ export default function StudentPortal() {
       return;
     }
 
-    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/student/${user.id}`);
+    const ws = new WebSocket(`${WS_BASE}/ws/student/${user.id}`);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

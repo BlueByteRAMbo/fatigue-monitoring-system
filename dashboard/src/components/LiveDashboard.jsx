@@ -6,11 +6,11 @@ import ToastContainer from './ToastContainer';
 import { Users, ArrowLeft, Clock, Grid, List, X, Download, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
-const WS_URL = 'ws://127.0.0.1:8000/ws/meeting';
+// WS_URL removed (using dynamic WS_BASE from AuthContext)
 const HIGH_FATIGUE_THRESHOLD_MS = 10000; // 10 seconds
 
 export default function LiveDashboard({ meetingId, onLeave }) {
-  const { user } = useAuth();
+  const { user, WS_BASE } = useAuth();
   const { toasts, addToast, removeToast } = useToast();
   const [students, setStudents]   = useState({});
   const [connected, setConnected] = useState(false);
@@ -76,7 +76,7 @@ export default function LiveDashboard({ meetingId, onLeave }) {
   }, [addToast]);
 
   useEffect(() => {
-    const ws = new WebSocket(`${WS_URL}/${meetingId}`);
+    const ws = new WebSocket(`${WS_BASE}/ws/meeting/${meetingId}`);
     wsRef.current = ws;
 
     ws.onopen    = () => setConnected(true);

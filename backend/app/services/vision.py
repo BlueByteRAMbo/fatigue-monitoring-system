@@ -1,10 +1,7 @@
 import cv2
 import numpy as np
-import mediapipe as mp
 from scipy.spatial.distance import euclidean
-import base64
-
-mp_face_mesh = mp.solutions.face_mesh
+from types import SimpleNamespace
 
 LEFT_EYE  = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33,  160, 158, 133, 153, 144]
@@ -42,6 +39,7 @@ def _head_pose(landmarks, w, h):
     img_pts = np.array([
         (landmarks[i].x * w, landmarks[i].y * h) for i in POSE_LM_IDS
     ], dtype=np.float64)
+    # Focal len approximation
     focal   = w
     cam_mat = np.array([
         [focal, 0,     w / 2],
@@ -58,15 +56,8 @@ def _head_pose(landmarks, w, h):
     return float(angles[0]), float(angles[1]), float(angles[2])
 
 
-def _brightness(frame):
-    if frame is None: return 0
-    # Use lab space L channel or just mean of grayscale
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return float(np.mean(gray))
-
-
 def _position_status(landmarks, w, h):
-    # Get bounding box of all landmarks
+    # Normalized coords from landmarks
     x_coords = [lm.x for lm in landmarks]
     y_coords = [lm.y for lm in landmarks]
     
@@ -74,7 +65,6 @@ def _position_status(landmarks, w, h):
     face_h = max(y_coords) - min(y_coords)
     center_x = (max(x_coords) + min(x_coords)) / 2
     
-    # Ratios
     size_ratio = (face_w + face_h) / 2
     
     if size_ratio > 0.8: return "too_close"
@@ -83,36 +73,19 @@ def _position_status(landmarks, w, h):
     return "good"
 
 
-def extract_features(image_b64: str) -> dict | None:
+def extract_features_from_landmarks(landmarks_raw: list) -> dict | None:
     """
-    Accepts a base64-encoded JPEG/PNG string from the Chrome extension.
-    Returns a dict of features + metadata, or None if no face detected.
+    Accepts 468 landmarks (list of dicts) from the Chrome extension.
+    Returns a dict of features + metadata.
     """
-    try:
-        img_bytes = base64.b64decode(image_b64)
-        img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-        frame     = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-    except Exception:
+    if not landmarks_raw:
         return None
 
-    if frame is None:
-        return None
-
-    h, w = frame.shape[:2]
-    rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    with mp_face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-    ) as face_mesh:
-        results = face_mesh.process(rgb)
-
-    if not results.multi_face_landmarks:
-        return None
-
-    lm = results.multi_face_landmarks[0].landmark
+    # Convert to object notation for existing helpers
+    lm = [SimpleNamespace(**l) for l in landmarks_raw]
+    
+    # Reference dimensions (landmarks are normalized, so any 4:3 works)
+    w, h = 640, 480
 
     left_ear  = _ear(lm, LEFT_EYE,  w, h)
     right_ear = _ear(lm, RIGHT_EYE, w, h)
@@ -128,6 +101,11 @@ def extract_features(image_b64: str) -> dict | None:
         "pitch":     round(pitch,     2),
         "yaw":       round(yaw,       2),
         "roll":      round(roll,      2),
-        "brightness": round(_brightness(frame), 1),
+        "brightness": 100.0, # Brightness check removed from backend (edge only)
         "position":  _position_status(lm, w, h)
     }
+
+
+def extract_features(image_b64: str) -> dict | None:
+    # Deprecated: Image processing was moved to the student extension (Option 2)
+    return None

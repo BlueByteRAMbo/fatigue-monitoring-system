@@ -1,6 +1,9 @@
 let videoElement = null;
 let canvasElement = null;
 let stream = null;
+let faceMesh = null;
+let currentLandmarks = null;
+let isMultiFace = false;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch(message.action) {
@@ -9,6 +12,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 .then(() => sendResponse({ success: true }))
                 .catch(err => sendResponse({ success: false, error: err.toString() }));
             return true;
+        case 'GET_LANDMARKS':
+            sendResponse({ 
+                landmarks: currentLandmarks, 
+                multi_face: isMultiFace 
+            });
+            return false;
         case 'TAKE_SNAPSHOT':
             const base64 = takeSnapshot();
             sendResponse({ image: base64 });
@@ -46,7 +55,7 @@ function playBeep() {
 }
 
 async function initCamera() {
-    if (stream) return; // Already initialized
+    if (stream) return;
     videoElement = document.getElementById('webcam');
     canvasElement = document.getElementById('canvas');
     
@@ -56,28 +65,79 @@ async function initCamera() {
     
     videoElement.srcObject = stream;
     
+    // Initialize FaceMesh
+    faceMesh = new FaceMesh({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }});
+    
+    faceMesh.setOptions({
+        maxNumFaces: 5,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(onFaceResults);
+
     // Wait for video to be ready
     return new Promise((resolve) => {
-        videoElement.onloadedmetadata = () => {
-            videoElement.play();
+        videoElement.onloadedmetadata = async () => {
+            await videoElement.play();
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
+            
+            // Start continuous processing
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            camera.start();
+            
             resolve();
         };
     });
 }
 
+function onFaceResults(results) {
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        currentLandmarks = null;
+        isMultiFace = false;
+        return;
+    }
+
+    isMultiFace = results.multiFaceLandmarks.length > 1;
+
+    // Closest User Logic: Pick the face with largest bounding box area
+    let bestFace = null;
+    let maxArea = -1;
+
+    for (const landmarks of results.multiFaceLandmarks) {
+        let minX = 1, maxX = 0, minY = 1, maxY = 0;
+        for (const lm of landmarks) {
+            if (lm.x < minX) minX = lm.x;
+            if (lm.x > maxX) maxX = lm.x;
+            if (lm.y < minY) minY = lm.y;
+            if (lm.y > maxY) maxY = lm.y;
+        }
+        const area = (maxX - minX) * (maxY - minY);
+        if (area > maxArea) {
+            maxArea = area;
+            bestFace = landmarks;
+        }
+    }
+    
+    currentLandmarks = bestFace;
+}
+
 function takeSnapshot() {
     if (!stream || !videoElement || !canvasElement) return null;
-    
     const ctx = canvasElement.getContext('2d');
     ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-    
-    // Return base64 JPEG
     const dataUrl = canvasElement.toDataURL('image/jpeg', 0.8);
-    // Strip the "data:image/jpeg;base64," prefix.
-    const base64Str = dataUrl.split(',')[1];
-    return base64Str;
+    return dataUrl.split(',')[1];
 }
 
 function stopCamera() {
@@ -87,5 +147,9 @@ function stopCamera() {
     }
     if (videoElement) {
         videoElement.srcObject = null;
+    }
+    if (faceMesh) {
+        faceMesh.close();
+        faceMesh = null;
     }
 }
