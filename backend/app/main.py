@@ -12,6 +12,9 @@ from app.services import ml
 
 app = FastAPI()
 
+# --- DYNAMIC CORS FIX FOR PRODUCTION ---
+from fastapi import Request
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -19,11 +22,12 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "https://fatigue-monitoring-system-api.onrender.com",
     ],
-    # This Regex is the most reliable way to allow ALL Render subdomains and the Extension
+    # This Regex allows all Render sites and Chrome Extensions
     allow_origin_regex=r"https://.*\.render\.com|chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 @app.on_event("startup")

@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      credentials: 'include',
     });
     if (!res.ok) {
       setLoading(false);
@@ -28,6 +29,7 @@ export function AuthProvider({ children }) {
     const data = await res.json();
     const meRes = await fetch(`${API}/auth/me`, {
       headers: { Authorization: `Bearer ${data.access_token}` },
+      credentials: 'include',
     });
     const me = await meRes.json();
     localStorage.setItem('fm_token', data.access_token);
@@ -44,6 +46,7 @@ export function AuthProvider({ children }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password, role }),
+      credentials: 'include',
     });
     if (!res.ok) {
       setLoading(false);
@@ -64,6 +67,7 @@ export function AuthProvider({ children }) {
   const authFetch = useCallback(async (path, opts = {}) => {
     const res = await fetch(`${API}${path}`, {
       ...opts,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
