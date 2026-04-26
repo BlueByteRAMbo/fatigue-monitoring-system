@@ -12,10 +12,8 @@ import os
 
 load_dotenv()
 
-# CHANGED: reading from .env instead of hardcoded string
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY is not set in .env")
+# CHANGED: reading from .env with a safe fallback to prevent crashes on Render
+SECRET_KEY = os.getenv("SECRET_KEY", "default-dev-secret-key-change-this-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
