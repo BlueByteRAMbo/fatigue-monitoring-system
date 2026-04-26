@@ -7,23 +7,31 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not DATABASE_URL:                                       
-    raise RuntimeError("DATABASE_URL is not set in .env")
+if not DATABASE_URL:
+    # Use local sqlite as a fallback so the server doesn't crash if the env var is missing
+    print("WARNING: DATABASE_URL not found. Falling back to local SQLite.")
+    DATABASE_URL = "sqlite:///./fatigue.db"
+
+# SQLAlchemy fix for Heroku/Neon: replace postgres:// with postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False}
     )
-elif "neon.tech" in DATABASE_URL or "sslmode=require" in DATABASE_URL:
+else:
     # Neon and most cloud providers require SSL
+    connect_args = {}
+    if "neon.tech" in DATABASE_URL or "sslmode=require" in DATABASE_URL:
+        connect_args = {"sslmode": "require"}
+        
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"sslmode": "require"},
+        connect_args=connect_args,
         pool_pre_ping=True
     )
-else:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
