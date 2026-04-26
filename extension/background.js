@@ -31,7 +31,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function performCalibration(token) {
     console.log("Starting Calibration Sequence...");
     const landmarks_list = [];
-    
+
     // Capture 5 sets of landmarks quickly
     for (let i = 0; i < 5; i++) {
         const response = await chrome.runtime.sendMessage({ action: 'GET_LANDMARKS' });
@@ -60,7 +60,7 @@ async function performCalibration(token) {
 
 async function playAlert() {
     // We send message to offscreen to play sound
-    chrome.runtime.sendMessage({ action: 'PLAY_ALERT' }).catch(() => {});
+    chrome.runtime.sendMessage({ action: 'PLAY_ALERT' }).catch(() => { });
 }
 
 async function ensureOffscreenDocument() {
@@ -88,13 +88,13 @@ async function startMonitoring(meetingId, userId, token) {
     const wsBase = API_URL.replace('http', 'ws');
     const wsUrl = `${wsBase}/ws/student/${userId}?meeting_id=${meetingId}`;
     studentSocket = new WebSocket(wsUrl);
-    
+
     studentSocket.onopen = () => console.log("[WebSocket] Presence established");
     studentSocket.onclose = () => console.log("[WebSocket] Presence lost");
     studentSocket.onerror = (e) => console.error("[WebSocket] Error", e);
-    
+
     await ensureOffscreenDocument();
-    
+
     // Initialize Camera in Offscreen Document
     await chrome.runtime.sendMessage({ action: 'INIT_CAMERA' });
 
@@ -173,7 +173,7 @@ async function captureAndAnalyze(meetingId, token) {
         if (!apiRes.ok) throw new Error(`API Error: ${apiRes.status}`);
 
         const result = await apiRes.json();
-        
+
         // 4. Update Badge based on Fatigue Level
         if (result.face_detected === false) {
             if (++consecutiveFaceMisses >= 2) {
@@ -184,12 +184,12 @@ async function captureAndAnalyze(meetingId, token) {
         } else {
             consecutiveFaceMisses = 0;
             chrome.runtime.sendMessage({ action: 'FACE_DETECTED' });
-            
+
             // Environment Feedback
-            chrome.runtime.sendMessage({ 
-                action: 'METADATA_UPDATE', 
-                brightness: result.brightness, 
-                position: result.position 
+            chrome.runtime.sendMessage({
+                action: 'METADATA_UPDATE',
+                brightness: result.brightness,
+                position: result.position
             });
 
             // Alerts
@@ -211,13 +211,13 @@ async function captureAndAnalyze(meetingId, token) {
         if (result.ear_score !== null && result.ear_score !== undefined) {
             const lowThreshold = (baselineEar ? baselineEar * 0.8 : 0.23);
             const eyeState = result.ear_score < lowThreshold ? "closed" : "open";
-            
+
             // Blink occurs on exact transition from closed -> open
             if (lastEyeState === "closed" && eyeState === "open") {
                 blinkCount++;
             }
             lastEyeState = eyeState;
-            
+
             // Re-calculate Rolling blinks/minute
             const elapsedMinutes = (Date.now() - windowStartTime) / 60000;
             currentBlinkRate = elapsedMinutes > 0 ? Number((blinkCount / elapsedMinutes).toFixed(2)) : 0;
@@ -232,7 +232,7 @@ function updateBadge(level) {
     // "low" | "medium" | "high"
     let color = '#64748b'; // default subtle
     let text = '-';
-    
+
     if (level === 'low') {
         color = '#10b981'; // Green
         text = 'L';

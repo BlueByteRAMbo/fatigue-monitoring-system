@@ -16,9 +16,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://*.render.com",
+        "https://fatigue-monitoring-system-api.onrender.com", # Your backend itself
     ],
-    allow_origin_regex="chrome-extension://.*",
+    # This Regex allows ANY .render.com site to talk to your API
+    allow_origin_regex=r"https://.*\.render\.com|chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
