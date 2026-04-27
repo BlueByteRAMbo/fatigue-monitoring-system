@@ -112,7 +112,12 @@ async def analyze_frame(
         blink_rate    = payload.blink_rate,
         face_detected = True,
         brightness    = features["brightness"],
-        position      = features["position"]
+        position      = features["position"],
+        left_ear      = features["left_EAR"],
+        right_ear     = features["right_EAR"],
+        pitch         = features["pitch"],
+        yaw           = features["yaw"],
+        roll          = features["roll"]
     )
 
 

@@ -199,6 +199,8 @@ async function captureAndAnalyze(meetingId, token) {
         if (!apiRes.ok) throw new Error(`API Error: ${apiRes.status}`);
 
         const result = await apiRes.json();
+        
+        console.log(`[ML 7-Feature Vector] Left EAR: ${result.left_ear}, Right EAR: ${result.right_ear}, Avg EAR: ${result.ear_score}, MAR: ${result.mar_score}, Pitch: ${result.pitch}, Yaw: ${result.yaw}, Roll: ${result.roll}`);
 
         // 4. Update Badge based on Fatigue Level
         if (result.face_detected === false) {

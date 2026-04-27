@@ -46,38 +46,47 @@ def predict(left_ear: float, right_ear: float, avg_ear: float,
             proba = float(_model.predict_proba(sample)[0][1])
             if proba >= 0.50:
                 triggers.append("MODEL")
+                
+            is_fatigued = bool(triggers)
+            if proba > 0.70:
+                fatigue_level = "high"
+            elif proba > 0.45:
+                fatigue_level = "medium"
+            else:
+                fatigue_level = "low"
+                
+            return {
+                "fatigue_level": fatigue_level,
+                "confidence":    round(proba, 4),
+                "triggers":      triggers,
+                "is_fatigued":   is_fatigued,
+            }
         except Exception as e:
             print(f"Prediction error: {e}")
 
-    # Normalize pitch (OpenCV solvePnP often returns angles near 180 or -180 when looking straight)
+    # --- FALLBACK ONLY (If ML model is missing or crashed) ---
     normalized_pitch = abs(pitch)
     if normalized_pitch > 90:
         normalized_pitch = 180.0 - normalized_pitch
 
-    # 2. Heuristic Triggers (Safety Fallback)
     if avg_ear < EAR_THRESHOLD:
         triggers.append("EAR")
     
     if normalized_pitch > PITCH_LIMIT:
         triggers.append("NOD")
 
-    # Safety Guard: If ML predicts fatigue but eyes are wide open, discard the ML trigger
-    if "MODEL" in triggers and avg_ear > (baseline_ear * 0.9 if baseline_ear else 0.28):
-        triggers.remove("MODEL")
-
     is_fatigued = bool(triggers)
 
-    # 3. Fatigue Level Logic
     if not is_fatigued:
         fatigue_level = "low"
-    elif proba > 0.70 or len(triggers) >= 2:
+    elif len(triggers) >= 2:
         fatigue_level = "high"
     else:
         fatigue_level = "medium"
 
     return {
         "fatigue_level": fatigue_level,
-        "confidence":    round(proba, 4),
+        "confidence":    0.0,
         "triggers":      triggers,
         "is_fatigued":   is_fatigued,
     }

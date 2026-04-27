@@ -22,6 +22,12 @@ class AnalyzeResponse(BaseModel):
     face_detected: bool
     brightness:    Optional[float] = None
     position:      Optional[str] = None
+    # 7-Feature Vector fields
+    left_ear:      Optional[float] = None
+    right_ear:     Optional[float] = None
+    pitch:         Optional[float] = None
+    yaw:           Optional[float] = None
+    roll:          Optional[float] = None
 
 
 class CalibrateRequest(BaseModel):
