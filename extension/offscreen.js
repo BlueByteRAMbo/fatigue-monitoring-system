@@ -1,21 +1,34 @@
 let videoElement = null;
 let canvasElement = null;
 let stream = null;
-let faceMesh = null;
 let currentLandmarks = null;
 let isMultiFace = false;
+let sandboxIframe = null;
+
+// Receive landmarks from Sandbox
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'LANDMARKS') {
+        currentLandmarks = event.data.landmarks;
+        isMultiFace = event.data.multi_face;
+        if (currentLandmarks) {
+            console.log("OFFSCREEN: Face Detected via Sandbox! Landmarks:", currentLandmarks.length);
+        }
+    } else if (event.data.type === 'ERROR') {
+        console.error("OFFSCREEN: Sandbox Error:", event.data.message);
+    }
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    switch(message.action) {
+    switch (message.action) {
         case 'INIT_CAMERA':
             initCamera()
                 .then(() => sendResponse({ success: true }))
                 .catch(err => sendResponse({ success: false, error: err.toString() }));
             return true;
         case 'GET_LANDMARKS':
-            sendResponse({ 
-                landmarks: currentLandmarks, 
-                multi_face: isMultiFace 
+            sendResponse({
+                landmarks: currentLandmarks,
+                multi_face: isMultiFace
             });
             return false;
         case 'TAKE_SNAPSHOT':
@@ -58,26 +71,16 @@ async function initCamera() {
     if (stream) return;
     videoElement = document.getElementById('webcam');
     canvasElement = document.getElementById('canvas');
-    
-    stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480 } 
-    });
-    
-    videoElement.srcObject = stream;
-    
-    // Initialize FaceMesh
-    faceMesh = new FaceMesh({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-    }});
-    
-    faceMesh.setOptions({
-        maxNumFaces: 5,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+
+    stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480 }
     });
 
-    faceMesh.onResults(onFaceResults);
+    videoElement.srcObject = stream;
+    console.log("OFFSCREEN: Camera stream active.");
+    
+    sandboxIframe = document.getElementById('sandbox');
+    console.log("OFFSCREEN: Sandbox iframe connected.");
 
     // Wait for video to be ready
     return new Promise((resolve) => {
@@ -85,52 +88,33 @@ async function initCamera() {
             await videoElement.play();
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
-            
-            // Start continuous processing
-            const camera = new Camera(videoElement, {
-                onFrame: async () => {
-                    await faceMesh.send({image: videoElement});
-                },
-                width: 640,
-                height: 480
-            });
-            camera.start();
-            
+
+            // Native Frame Loop (More stable than the Camera helper)
+            async function processFrame() {
+                if (!stream) return; // Stop if camera stopped
+                try {
+                    // Diagnostic: Check if video is actually sending data
+                    if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
+                        const bitmap = await createImageBitmap(videoElement);
+                        sandboxIframe.contentWindow.postMessage({ type: 'PROCESS_FRAME', image: bitmap }, '*', [bitmap]);
+                    } else {
+                        if (Date.now() % 5000 < 100) { // Log every 5 seconds
+                            console.warn("OFFSCREEN: Video not ready yet. State:", videoElement.readyState, "Dim:", videoElement.videoWidth, "x", videoElement.videoHeight);
+                        }
+                    }
+                } catch (e) {
+                    console.error("OFFSCREEN: Frame transfer error:", e);
+                }
+                requestAnimationFrame(processFrame);
+            }
+
+            processFrame();
             resolve();
         };
     });
 }
 
-function onFaceResults(results) {
-    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        currentLandmarks = null;
-        isMultiFace = false;
-        return;
-    }
 
-    isMultiFace = results.multiFaceLandmarks.length > 1;
-
-    // Closest User Logic: Pick the face with largest bounding box area
-    let bestFace = null;
-    let maxArea = -1;
-
-    for (const landmarks of results.multiFaceLandmarks) {
-        let minX = 1, maxX = 0, minY = 1, maxY = 0;
-        for (const lm of landmarks) {
-            if (lm.x < minX) minX = lm.x;
-            if (lm.x > maxX) maxX = lm.x;
-            if (lm.y < minY) minY = lm.y;
-            if (lm.y > maxY) maxY = lm.y;
-        }
-        const area = (maxX - minX) * (maxY - minY);
-        if (area > maxArea) {
-            maxArea = area;
-            bestFace = landmarks;
-        }
-    }
-    
-    currentLandmarks = bestFace;
-}
 
 function takeSnapshot() {
     if (!stream || !videoElement || !canvasElement) return null;
@@ -147,9 +131,5 @@ function stopCamera() {
     }
     if (videoElement) {
         videoElement.srcObject = null;
-    }
-    if (faceMesh) {
-        faceMesh.close();
-        faceMesh = null;
     }
 }

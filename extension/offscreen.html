@@ -4,10 +4,9 @@
     <title>Offscreen Capture Engine</title>
 </head>
 <body>
-    <video id="webcam" autoplay playsinline muted style="display:none;"></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-    <script src="libs/face_mesh.js"></script>
-    <script src="libs/camera_utils.js"></script>
+    <video id="webcam" autoplay playsinline muted style="position:fixed; top:-1000px; opacity:0;"></video>
+    <canvas id="canvas" style="position:fixed; top:-1000px; opacity:0;"></canvas>
+    <iframe id="sandbox" src="sandbox.html" style="display:none;"></iframe>
     <script src="offscreen.js"></script>
 </body>
 </html>

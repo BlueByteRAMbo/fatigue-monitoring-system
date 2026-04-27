@@ -57,6 +57,10 @@ def predict(left_ear: float, right_ear: float, avg_ear: float,
     if abs(pitch) > PITCH_LIMIT:
         triggers.append("NOD")
 
+    # Safety Guard: If ML predicts fatigue but eyes are wide open, discard the ML trigger
+    if "MODEL" in triggers and avg_ear > (baseline_ear * 0.9 if baseline_ear else 0.28):
+        triggers.remove("MODEL")
+
     is_fatigued = bool(triggers)
 
     # 3. Fatigue Level Logic

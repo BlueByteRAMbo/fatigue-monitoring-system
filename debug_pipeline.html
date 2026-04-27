@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fatigue System - Pipeline Debugger</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { position: relative; width: 640px; height: 480px; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        video, canvas { position: absolute; top: 0; left: 0; width: 640px; height: 480px; }
+        .stats { margin-top: 20px; background: #1e293b; padding: 15px; border-radius: 8px; width: 600px; }
+        .status { padding: 10px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; text-align: center; }
+        .online { background: #059669; }
+        .offline { background: #dc2626; }
+        pre { font-size: 11px; background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 200px; }
+    </style>
+</head>
+<body>
+    <h1>AI Pipeline Debugger</h1>
+    <div id="status" class="status offline">INITIALIZING AI...</div>
+    
+    <div class="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="stats">
+        <h3>Live Pipeline Data</h3>
+        <p>If you see a <b>Green Mesh</b> on your face and numbers moving below, the pipeline is 100% WORKING.</p>
+        <div id="metrics">EAR: -- | Blinks: --</div>
+        <pre id="raw-data">Waiting for landmarks...</pre>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const rawEl = document.getElementById('raw-data');
+
+        async function start() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                
+                const faceMesh = new FaceMesh({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+                }});
+
+                faceMesh.setOptions({
+                    maxNumFaces: 1,
+                    refineLandmarks: true,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                faceMesh.onResults((results) => {
+                    statusEl.innerText = "PIPELINE ACTIVE - FACE DETECTED";
+                    statusEl.className = "status online";
+                    
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
+                        const landmarks = results.multiFaceLandmarks[0];
+                        drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#10b981', lineWidth: 0.5});
+                        
+                        // Show first 5 landmarks as proof
+                        const subset = landmarks.slice(0, 5).map(l => `x: ${l.x.toFixed(3)}, y: ${l.y.toFixed(3)}`);
+                        rawEl.innerText = "FIRST 5 LANDMARKS:\n" + subset.join('\n') + "\n\nTotal Points: " + landmarks.length;
+                    } else {
+                        statusEl.innerText = "PIPELINE ACTIVE - NO FACE SEEN";
+                        statusEl.className = "status offline";
+                        rawEl.innerText = "Looking for face...";
+                    }
+                });
+
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    async function loop() {
+                        await faceMesh.send({image: video});
+                        requestAnimationFrame(loop);
+                    }
+                    loop();
+                };
+
+            } catch (err) {
+                statusEl.innerText = "ERROR: " + err.message;
+                statusEl.className = "status offline";
+            }
+        }
+        start();
+    </script>
+</body>
+</html>

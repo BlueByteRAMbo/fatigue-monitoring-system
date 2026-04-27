@@ -1,4 +1,4 @@
-const API_URL = 'http://127.0.0.1:8000'; // Update this to your Render URL after deployment
+const API_URL = 'https://fatigue-monitoring-system-api.onrender.com'; // Production Render URL
 let monitoringInterval = null;
 let studentSocket = null;
 
@@ -64,18 +64,26 @@ async function playAlert() {
 }
 
 async function ensureOffscreenDocument() {
-    const existingContexts = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [chrome.runtime.getURL(OFFSCREEN_PATH)]
-    });
+    try {
+        const existingContexts = await chrome.runtime.getContexts({
+            contextTypes: ['OFFSCREEN_DOCUMENT'],
+            documentUrls: [chrome.runtime.getURL(OFFSCREEN_PATH)]
+        });
 
-    if (existingContexts.length > 0) return;
+        if (existingContexts.length > 0) {
+            console.log("[Offscreen] AI Engine already running.");
+            return;
+        }
 
-    await chrome.offscreen.createDocument({
-        url: OFFSCREEN_PATH,
-        reasons: ['USER_MEDIA'],
-        justification: 'Capture student webcam for fatigue detection'
-    });
+        await chrome.offscreen.createDocument({
+            url: OFFSCREEN_PATH,
+            reasons: ['USER_MEDIA'],
+            justification: 'Capture student webcam for fatigue detection'
+        });
+        console.log("[Offscreen] AI Engine created successfully.");
+    } catch (e) {
+        console.warn("[Offscreen] AI Engine creation handled:", e.message);
+    }
 }
 
 async function startMonitoring(meetingId, userId, token) {
@@ -96,7 +104,9 @@ async function startMonitoring(meetingId, userId, token) {
     await ensureOffscreenDocument();
 
     // Initialize Camera in Offscreen Document
-    await chrome.runtime.sendMessage({ action: 'INIT_CAMERA' });
+    console.log("[Monitor] Initializing camera in offscreen document...");
+    const initRes = await chrome.runtime.sendMessage({ action: 'INIT_CAMERA' });
+    console.log("[Monitor] Camera init result:", initRes);
 
     // Reset Blink Rate Engine
     lastEyeState = 'open';
@@ -145,11 +155,27 @@ async function stopMonitoring() {
 async function captureAndAnalyze(meetingId, token) {
     try {
         // 1. Get Landmarks (Edge Processing)
+        console.log("[Loop] Requesting landmarks from AI Engine...");
         const response = await chrome.runtime.sendMessage({ action: 'GET_LANDMARKS' });
+        
         if (!response) {
-            console.warn("Failed to get landmarks from offscreen document");
+            console.warn("[Loop] NO RESPONSE from AI Engine.");
             return;
         }
+
+        if (!response.landmarks) {
+            console.warn("[Loop] NO FACE: AI is active but no face was found in frame.");
+            // Original logic for face not detected
+            if (++consecutiveFaceMisses >= 2) {
+                chrome.runtime.sendMessage({ action: 'FACE_NOT_DETECTED', consecutiveMisses: consecutiveFaceMisses });
+                chrome.action.setBadgeText({ text: '!!' });
+                chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
+            }
+            return;
+        }
+
+        console.log("[Loop] SUCCESS: Landmarks received:", response.landmarks.length);
+        consecutiveFaceMisses = 0;
 
         // 2. Prepare Payload
         const payload = {
