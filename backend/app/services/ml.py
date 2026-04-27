@@ -49,12 +49,16 @@ def predict(left_ear: float, right_ear: float, avg_ear: float,
         except Exception as e:
             print(f"Prediction error: {e}")
 
+    # Normalize pitch (OpenCV solvePnP often returns angles near 180 or -180 when looking straight)
+    normalized_pitch = abs(pitch)
+    if normalized_pitch > 90:
+        normalized_pitch = 180.0 - normalized_pitch
+
     # 2. Heuristic Triggers (Safety Fallback)
     if avg_ear < EAR_THRESHOLD:
         triggers.append("EAR")
-    if mar > MAR_THRESHOLD:
-        triggers.append("YAWN")
-    if abs(pitch) > PITCH_LIMIT:
+    
+    if normalized_pitch > PITCH_LIMIT:
         triggers.append("NOD")
 
     # Safety Guard: If ML predicts fatigue but eyes are wide open, discard the ML trigger
