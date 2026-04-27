@@ -4,17 +4,19 @@ let stream = null;
 let currentLandmarks = null;
 let isMultiFace = false;
 let sandboxIframe = null;
+let isSandboxProcessing = false;
 
 // Receive landmarks from Sandbox
 window.addEventListener('message', (event) => {
     if (event.data.type === 'LANDMARKS') {
         currentLandmarks = event.data.landmarks;
         isMultiFace = event.data.multi_face;
-        if (currentLandmarks) {
-            console.log("OFFSCREEN: Face Detected via Sandbox! Landmarks:", currentLandmarks.length);
-        }
+        isSandboxProcessing = false;
+        
+        // Remove massive logging to prevent console lag, background polling already logs success
     } else if (event.data.type === 'ERROR') {
         console.error("OFFSCREEN: Sandbox Error:", event.data.message);
+        isSandboxProcessing = false;
     }
 });
 
@@ -92,9 +94,16 @@ async function initCamera() {
             // Native Frame Loop (More stable than the Camera helper)
             async function processFrame() {
                 if (!stream) return; // Stop if camera stopped
+                
+                if (isSandboxProcessing) {
+                    requestAnimationFrame(processFrame);
+                    return; // Skip if sandbox is busy
+                }
+                
                 try {
                     // Diagnostic: Check if video is actually sending data
                     if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
+                        isSandboxProcessing = true;
                         const bitmap = await createImageBitmap(videoElement);
                         sandboxIframe.contentWindow.postMessage({ type: 'PROCESS_FRAME', image: bitmap }, '*', [bitmap]);
                     } else {
