@@ -12,7 +12,7 @@ window.addEventListener('message', (event) => {
         currentLandmarks = event.data.landmarks;
         isMultiFace = event.data.multi_face;
         isSandboxProcessing = false;
-        
+
         // Remove massive logging to prevent console lag, background polling already logs success
     } else if (event.data.type === 'ERROR') {
         console.error("OFFSCREEN: Sandbox Error:", event.data.message);
@@ -80,7 +80,7 @@ async function initCamera() {
 
     videoElement.srcObject = stream;
     console.log("OFFSCREEN: Camera stream active.");
-    
+
     sandboxIframe = document.getElementById('sandbox');
     console.log("OFFSCREEN: Sandbox iframe connected.");
 
@@ -94,12 +94,12 @@ async function initCamera() {
             // Native Frame Loop (More stable than the Camera helper)
             async function processFrame() {
                 if (!stream) return; // Stop if camera stopped
-                
+
                 if (isSandboxProcessing) {
-                    requestAnimationFrame(processFrame);
+                    setTimeout(processFrame, 33);
                     return; // Skip if sandbox is busy
                 }
-                
+
                 try {
                     // Diagnostic: Check if video is actually sending data
                     if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
@@ -114,7 +114,9 @@ async function initCamera() {
                 } catch (e) {
                     console.error("OFFSCREEN: Frame transfer error:", e);
                 }
-                requestAnimationFrame(processFrame);
+
+                // CRITICAL FIX: requestAnimationFrame pauses in offscreen documents. Use setTimeout instead.
+                setTimeout(processFrame, 33); // ~30 fps
             }
 
             processFrame();
